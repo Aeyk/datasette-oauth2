@@ -55,10 +55,10 @@ jobs:
         gcloud config set project datasette-222320
         wget https://latest.datasette.io/fixtures.db
         datasette publish cloudrun fixtures.db \
-        --install https://github.com/simonw/datasette-auth0/archive/$GITHUB_SHA.zip \
-        --plugin-secret datasette-auth0 domain "datasette.us.auth0.com" \
-        --plugin-secret datasette-auth0 client_id "n9eaHS0ckIsujoyZNZ1wVgcPevjAcAXn" \
-        --plugin-secret datasette-auth0 client_secret "$CLIENT_SECRET" \
-        --about "datasette-auth0" \
-        --about_url "https://datasette.io/plugins/datasette-auth0" \
-        --service datasette-auth0-demo
+        --install https://github.com/simonw/datasette-oauth2/archive/$GITHUB_SHA.zip \
+        --plugin-secret datasette-oauth2 domain "datasette.us.oauth2.com" \
+        --plugin-secret datasette-oauth2 client_id "n9eaHS0ckIsujoyZNZ1wVgcPevjAcAXn" \
+        --plugin-secret datasette-oauth2 client_secret "$CLIENT_SECRET" \
+        --about "datasette-oauth2" \
+        --about_url "https://datasette.io/plugins/datasette-oauth2" \
+        --service datasette-oauth2-demo

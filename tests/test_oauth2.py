@@ -19,8 +19,8 @@ def datasette():
         memory=True,
         metadata={
             "plugins": {
-                "datasette-auth0": {
-                    "domain": "test.us.auth0.com",
+                "datasette-oauth2": {
+                    "domain": "test.us.oauth2.com",
                     "client_id": "CLIENT_ID",
                     "client_secret": "CLIENT_SECRET",
                 }
@@ -37,29 +37,29 @@ async def test_config_check(config_key):
         memory=True,
         metadata={
             "plugins": {
-                "datasette-auth0": {
+                "datasette-oauth2": {
                     key: "1" for key in CONFIG_KEYS if key != config_key
                 }
             }
         },
     )
-    response = await datasette.client.get("/-/auth0-login")
+    response = await datasette.client.get("/-/oauth2-login")
     assert response.status_code == 302
     assert response.headers["location"] == "/"
     assert_message(
         datasette,
         response,
-        "The following auth0 plugin settings are missing: {}".format(config_key),
+        "The following oauth2 plugin settings are missing: {}".format(config_key),
     )
 
 
 @pytest.mark.asyncio
-async def test_auth0_login(datasette):
-    response = await datasette.client.get("/-/auth0-login")
+async def test_oauth2_login(datasette):
+    response = await datasette.client.get("/-/oauth2-login")
     assert response.status_code == 302
     location = response.headers["location"]
     bits = urllib.parse.urlparse(location)
-    assert bits.netloc == "test.us.auth0.com"
+    assert bits.netloc == "test.us.oauth2.com"
     assert bits.path == "/authorize"
     qs = dict(urllib.parse.parse_qsl(bits.query))
     assert (
@@ -67,7 +67,7 @@ async def test_auth0_login(datasette):
         >= {
             "response_type": "code",
             "client_id": "CLIENT_ID",
-            "redirect_uri": "http://localhost/-/auth0-callback",
+            "redirect_uri": "http://localhost/-/oauth2-callback",
             "scope": "openid profile email",
         }.items()
     )
@@ -78,14 +78,14 @@ async def test_auth0_login(datasette):
 @pytest.mark.asyncio
 async def test_callback(datasette, httpx_mock):
     httpx_mock.add_response(
-        url="https://test.us.auth0.com/oauth/token",
+        url="https://test.us.oauth2.com/oauth/token",
         json={"access_token": "ACCESS_TOKEN"},
     )
     httpx_mock.add_response(
-        url="https://test.us.auth0.com/userinfo", json={"id": "user"}
+        url="https://test.us.oauth2.com/userinfo", json={"id": "user"}
     )
     response = await datasette.client.get(
-        "/-/auth0-callback?state=state&code=x", cookies={"auth0-state": "state"}
+        "/-/oauth2-callback?state=state&code=x", cookies={"oauth2-state": "state"}
     )
     assert response.status_code == 302
     assert response.headers["location"] == "/"
@@ -105,7 +105,7 @@ async def test_callback(datasette, httpx_mock):
 async def test_callback_state_must_match(datasette):
     state = "state1234"
     response = await datasette.client.get(
-        "/-/auth0-callback?state=not-the-same&code=x", cookies={"auth0-state": state}
+        "/-/oauth2-callback?state=not-the-same&code=x", cookies={"oauth2-state": state}
     )
     assert response.status_code == 302
     assert response.headers["location"] == "/"

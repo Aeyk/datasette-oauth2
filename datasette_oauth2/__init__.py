@@ -6,16 +6,16 @@ import secrets
 import time
 
 
-async def auth0_login(request, datasette):
+async def oauth2_login(request, datasette):
     redirect_uri = datasette.absolute_url(
-        request, datasette.urls.path("/-/auth0-callback")
+        request, datasette.urls.path("/-/oauth2-callback")
     )
     try:
         config = _config(datasette)
     except ConfigError as e:
         return _error(datasette, request, str(e))
     state = secrets.token_hex(16)
-    url = "https://{}/authorize?".format(config["domain"]) + urlencode(
+    url = "{}?".format(config["auth_url"]) + urlencode(
         {
             "response_type": "code",
             "client_id": config["client_id"],
@@ -25,11 +25,11 @@ async def auth0_login(request, datasette):
         }
     )
     response = Response.redirect(url)
-    response.set_cookie("auth0-state", state, max_age=3600)
+    response.set_cookie("oauth2-state", state, max_age=3600)
     return response
 
 
-async def auth0_callback(request, datasette):
+async def oauth2_callback(request, datasette):
     try:
         config = _config(datasette)
     except ConfigError as e:
@@ -37,7 +37,7 @@ async def auth0_callback(request, datasette):
     code = request.args["code"]
     state = request.args.get("state") or ""
     # Compare state to their cookie
-    expected_state = request.cookies.get("auth0-state") or ""
+    expected_state = request.cookies.get("oauth2-state") or ""
     if not state or not secrets.compare_digest(state, expected_state):
         return _error(
             datasette,
@@ -47,11 +47,11 @@ async def auth0_callback(request, datasette):
 
     # Exchange the code for an access token
     response = httpx.post(
-        "https://{}/oauth/token".format(config["domain"]),
+        "{}".format(config["token_url"]),
         data={
             "grant_type": "authorization_code",
             "redirect_uri": datasette.absolute_url(
-                request, datasette.urls.path("/-/auth0-callback")
+                request, datasette.urls.path("/-/oauth2-callback")
             ),
             "code": code,
         },
@@ -67,7 +67,7 @@ async def auth0_callback(request, datasette):
     access_token = response.json()["access_token"]
     # Exchange that for the user info
     profile_response = httpx.get(
-        "https://{}/userinfo".format(config["domain"]),
+        "{}".format(config["userinfo_url"]),
         headers={"Authorization": "Bearer {}".format(access_token)},
     )
     if profile_response.status_code != 200:
@@ -83,7 +83,10 @@ async def auth0_callback(request, datasette):
         "ds_actor",
         datasette.sign(
             {
-                "a": profile_response.json(),
+                "a": {
+                    "name": profile_response.json()['preferred_username'],
+                    "id": "root"
+                },
                 "e": baseconv.base62.encode(expires_at),
             },
             "actor",
@@ -95,8 +98,8 @@ async def auth0_callback(request, datasette):
 @hookimpl
 def register_routes():
     return [
-        (r"^/-/auth0-login$", auth0_login),
-        (r"^/-/auth0-callback$", auth0_callback),
+        (r"^/-/oauth2-login$", oauth2_login),
+        (r"^/-/oauth2-callback$", oauth2_callback),
     ]
 
 
@@ -105,13 +108,13 @@ class ConfigError(Exception):
 
 
 def _config(datasette):
-    config = datasette.plugin_config("datasette-auth0")
+    config = datasette.plugin_config("datasette-oauth2")
     missing = [
-        key for key in ("domain", "client_id", "client_secret") if not config.get(key)
+        key for key in ("userinfo_url", "token_url", "auth_url", "client_id", "client_secret") if not config.get(key)
     ]
     if missing:
         raise ConfigError(
-            "The following auth0 plugin settings are missing: {}".format(
+            "The following oauth2 plugin settings are missing: {}".format(
                 ", ".join(missing)
             )
         )
@@ -125,10 +128,12 @@ def _error(datasette, request, message):
 
 @hookimpl
 def menu_links(datasette, actor):
+    config = datasette.plugin_config("datasette-oauth2")
     if not actor:
         return [
             {
-                "href": datasette.urls.path("/-/auth0-login"),
-                "label": "Sign in with Auth0",
+                "href": datasette.urls.path("/-/oauth2-login"),
+                # "label": config["sign_in_message"] or "Sign in with OAuth2"
+                "label": "Sign in with OAuth2"
             },
         ]
